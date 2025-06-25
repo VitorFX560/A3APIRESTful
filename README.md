@@ -1,7 +1,8 @@
-Dependências: npm install e npm install firebase-admin
+Dependências necessárias:npm install,npm install firebase-admin e npm install express 
+Executar node server.js para inicializar o servidor localhost(Porta 3000)
+Com a Porta ativa,testar as requisições de server.js
+-todas as requisições comentadas acima de seu respectivo código
+Requisições testadas via curl
 
-Nessa API RESTful podemos buscar decks de Yugioh em Construção com o nome de Old Blue-Eyes,
-atualizar descrição dos deck,deletar os cards,ler o conteudo dos Decks e dos cards,
-criar decks,adicionar cards nos decks,deletar os cards,deletar decks
-Atualizar a descrição de um deck e de um card se assim desejar...
-exibir conteúdo de cards e muito mais!
+
+
