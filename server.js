@@ -5,7 +5,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const serviceAccount = require('./services/serviceAccountKey.json');
 import * as deckService from './deckService.js';
-import { auth } from './auth.js';  // <-- import do middleware
+import { auth } from './auth.js';  // seu middleware de autenticação
 
 // Inicializa Firebase Admin
 admin.initializeApp({
@@ -14,10 +14,42 @@ admin.initializeApp({
 
 const app = express();
 app.use(express.json());
-app.use(auth);  // <-- aplica autenticação a todas as rotas
+
+// Rota pública de login — recebe email/senha e retorna um ID Token
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+  }
+  try {
+    // Faz a chamada REST ao Identity Toolkit para verificar credenciais
+    const apiKey = 'AIzaSyDhVyOHZWAKBvDVE1B5IHHECoYZLIyQs78'; // sua Web API Key
+    const response = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, returnSecureToken: true })
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      return res.status(401).json({ error: data.error.message || 'Autenticação falhou.' });
+    }
+    // devolve o ID Token para o cliente usar nas próximas requisições
+    res.json({ idToken: data.idToken });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// A partir daqui, todas as rotas ficam protegidas
+app.use(auth);
+
+// Health Check (protegido agora)
+app.get('/', (req, res) => res.send('API RESTful de Decks e Cards rodando'));
 
 // --- ROTAS CRUD para Decks ---
-
 app.get('/decks', async (req, res) => {
   try {
     const ids = await deckService.listarDecks();
@@ -33,7 +65,6 @@ app.get('/decks', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.post('/decks', async (req, res) => {
   try {
     const { name, description } = req.body;
@@ -46,7 +77,6 @@ app.post('/decks', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.get('/decks/:deckId', async (req, res) => {
   try {
     const { deckId } = req.params;
@@ -58,7 +88,6 @@ app.get('/decks/:deckId', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.put('/decks/:deckId', async (req, res) => {
   try {
     const { deckId } = req.params;
@@ -75,7 +104,6 @@ app.put('/decks/:deckId', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.delete('/decks/:deckId', async (req, res) => {
   try {
     const { deckId } = req.params;
@@ -87,13 +115,11 @@ app.delete('/decks/:deckId', async (req, res) => {
 });
 
 // --- ROTAS PARA CARDS ---
-
 app.get('/decks/:deckId/cards', async (req, res) => {
   try {
     const { deckId } = req.params;
     const { section, group } = req.query;
     if (!section) return res.status(400).json({ error: 'Query param "section" é obrigatório.' });
-
     let cards;
     if (section === 'Main Deck') {
       if (!group) return res.status(400).json({ error: 'Query param "group" é obrigatório para Main Deck.' });
@@ -108,7 +134,6 @@ app.get('/decks/:deckId/cards', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.get('/decks/:deckId/cards/:cardId', async (req, res) => {
   try {
     const { deckId, cardId } = req.params;
@@ -117,16 +142,13 @@ app.get('/decks/:deckId/cards/:cardId', async (req, res) => {
     if (section === 'Main Deck' && !group) {
       return res.status(400).json({ error: 'Query param "group" é obrigatório para Main Deck.' });
     }
-
     const docSnap = await deckService.getCard(deckId, section, cardId, group);
     if (!docSnap.exists) return res.status(404).json({ error: 'Card não encontrado.' });
-
     res.json({ id: cardId, ...docSnap.data() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.post('/decks/:deckId/cards', async (req, res) => {
   try {
     const { deckId } = req.params;
@@ -143,7 +165,6 @@ app.post('/decks/:deckId/cards', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.put('/decks/:deckId/cards/:cardId', async (req, res) => {
   try {
     const { deckId, cardId } = req.params;
@@ -160,15 +181,12 @@ app.put('/decks/:deckId/cards/:cardId', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.delete('/decks/:deckId/cards/:cardId', async (req, res) => {
   try {
     const { deckId, cardId } = req.params;
     const { section, group } = req.query;
     if (!section) return res.status(400).json({ error: 'Query param "section" é obrigatório.' });
-    if (section === 'Main Deck' && !group) {
-      return res.status(400).json({ error: 'Query param "group" é obrigatório para Main Deck.' });
-    }
+    if (section === 'Main Deck' && !group) return res.status(400).json({ error: 'Query param "group" é obrigatório para Main Deck.' });
     await deckService.removeCard(deckId, section, cardId, group);
     res.json({ message: 'Card excluído com sucesso.' });
   } catch (err) {
@@ -176,11 +194,6 @@ app.delete('/decks/:deckId/cards/:cardId', async (req, res) => {
   }
 });
 
-// Health Check
-app.get('/', (req, res) => res.send('API RESTful de Decks e Cards rodando'));
-
 // Inicia servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API ouvindo na porta ${PORT}`));
-
-
